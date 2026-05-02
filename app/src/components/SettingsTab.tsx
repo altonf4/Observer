@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Settings, TestTube2, Loader2, FileDown, CheckCircle2, Database, Trash2, Cloud, Server, Cpu, Mic, Monitor, Play, Square, Volume2, Keyboard, Check, AlertTriangle, Eye, EyeOff, Layers, Move, Maximize2, Zap, ChevronDown, ChevronRight } from 'lucide-react';
+import { Settings, TestTube2, Loader2, FileDown, CheckCircle2, Database, Trash2, Cloud, Server, Cpu, Mic, Monitor, Play, Square, Volume2, Keyboard, Check, AlertTriangle, Eye, EyeOff, Layers, Move, Maximize2, Zap, ChevronDown, ChevronRight, Shield } from 'lucide-react';
 import { SensorSettings } from '../utils/settings';
 import { StreamManager } from '../utils/streamManager';
 import { isDesktop } from '../utils/platform';
+import { isTelemetryEnabled, setTelemetryEnabled, isTelemetryLockedOff } from '../utils/privacy';
 
 // Whisper imports
 import { WhisperModelManager } from '../utils/whisper/WhisperModelManager';
@@ -37,6 +38,68 @@ const SettingsCard: React.FC<{ title: string; children: React.ReactNode }> = ({ 
     <div className="p-6">{children}</div>
   </div>
 );
+
+// Telemetry toggle — gates Datadog RUM session-replay + analytics.
+// Default OFF in this fork; flip on for upstream-equivalent behavior.
+const PrivacySettings: React.FC = () => {
+  const [enabled, setEnabled] = useState(isTelemetryEnabled());
+  const lockedOff = isTelemetryLockedOff();
+
+  const handleToggle = () => {
+    const next = !enabled;
+    setTelemetryEnabled(next);
+    setEnabled(next);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-3">
+        <Shield className="h-5 w-5 text-gray-500 mt-0.5 flex-shrink-0" />
+        <div className="flex-1">
+          <p className="text-sm text-gray-700">
+            Send anonymized usage data, error reports, and 20%-sampled session
+            replay to Datadog. This is what Observer's upstream release does
+            unconditionally; this fork makes it opt-in and defaults it OFF.
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Screenshots, camera, audio, agent prompts, and model responses are
+            never included — those only ever go to the inference server you
+            select. This toggle only controls UI/usage telemetry.
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Changes apply on next page reload.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between bg-gray-50 p-3 rounded-md">
+        <div>
+          <span className="text-sm font-medium text-gray-700">Telemetry</span>
+          {lockedOff && (
+            <span className="ml-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+              locked off at build time
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={handleToggle}
+          disabled={lockedOff}
+          aria-pressed={enabled}
+          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+            enabled ? 'bg-blue-600' : 'bg-gray-300'
+          }`}
+        >
+          <span
+            className={`inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${
+              enabled ? 'translate-x-5' : 'translate-x-0'
+            }`}
+          />
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const SettingsTab = () => {
 
@@ -853,6 +916,11 @@ const SettingsTab = () => {
           </div>
         </>
       )}
+
+      {/* --- Privacy & Telemetry Card (fork addition) --- */}
+      <SettingsCard title="Privacy & Telemetry">
+        <PrivacySettings />
+      </SettingsCard>
 
       {/* --- Change Detection Settings Card --- */}
       <SettingsCard title="Change Detection Settings">

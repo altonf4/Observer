@@ -1,6 +1,7 @@
 import { datadogRum } from '@datadog/browser-rum';
 import { reactPlugin } from '@datadog/browser-rum-react';
 import { Analytics } from '@utils/analytics';
+import { isTelemetryEnabled } from '@utils/privacy';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Terminal, MessageSquare, ChevronUp } from 'lucide-react';
 import { Auth0Provider } from '@auth0/auth0-react';
@@ -55,24 +56,29 @@ import InteractiveTutorial from '@components/InteractiveTutorial';
 import AgentChip from '@components/AgentChip';
 import { PERSON_DETECTOR_AGENT, PERSON_DETECTOR_CODE, PERSON_DETECTOR_ID } from '@utils/personDetectorAgent';
 
-datadogRum.init({
-  applicationId: 'ed504b99-0755-4aff-b155-06eeb559c705',
-  clientToken: 'pub2abb69c9ad9708fa859220211d5b26e5',
-  site: 'us5.datadoghq.com',
-  service: 'observer-web',
-  env: import.meta.env.MODE,
-  version: '2.3.4',
-  sessionSampleRate: 100,
-  sessionReplaySampleRate: 20,
-  trackResources: true,
-  trackUserInteractions: true,
-  trackLongTasks: true,
-  plugins: [reactPlugin({ router: false })],
-});
+// Datadog RUM is gated by the privacy toggle in this fork (default: OFF).
+// Toggle in Settings → Privacy & Telemetry, or set VITE_DISABLE_TELEMETRY=true
+// at build time to lock it off entirely. See utils/privacy.ts.
+if (isTelemetryEnabled()) {
+  datadogRum.init({
+    applicationId: 'ed504b99-0755-4aff-b155-06eeb559c705',
+    clientToken: 'pub2abb69c9ad9708fa859220211d5b26e5',
+    site: 'us5.datadoghq.com',
+    service: 'observer-web',
+    env: import.meta.env.MODE,
+    version: '2.3.4',
+    sessionSampleRate: 100,
+    sessionReplaySampleRate: 20,
+    trackResources: true,
+    trackUserInteractions: true,
+    trackLongTasks: true,
+    plugins: [reactPlugin({ router: false })],
+  });
 
-datadogRum.setGlobalContextProperty('platform',
-  isIOS() ? 'ios' : isAndroid() ? 'android' : isDesktop() ? 'desktop' : 'web'
-);
+  datadogRum.setGlobalContextProperty('platform',
+    isIOS() ? 'ios' : isAndroid() ? 'android' : isDesktop() ? 'desktop' : 'web'
+  );
+}
 
 // Main app content - uses the unified auth hook
 function AppContent() {

@@ -55,6 +55,7 @@ These are why most of this fork's commits exist. **Watch for them when editing.*
 - **`/v1/models` `multimodal` flag** — vanilla Ollama doesn't expose this. The patched `observer-ollama` proxy now queries `/api/show` per model and injects `multimodal`/`thinking`/`tools` flags. Without the proxy, every Ollama model shows the false-positive "may not support images" warning.
 - **Thinking-mode models** (Qwen 3.6, DeepSeek-R1, GLM, Gemma 4 with `<|think|>`) wrap output in `<think>...</think>`. Naive `response.includes("KEYWORD")` fires on the model *thinking about* the keyword, not deciding. Always strip first: `const cleaned = response.replace(/<think>[\s\S]*?<\/think>/g, '').trim();`
 - **Agent IDs in `$MEMORY@id` / `$IMEMORY@id`** must match the agent's own `id` (or, deliberately, another agent's). Mismatches silently return empty memory.
+- **Datadog RUM phones home unconditionally upstream.** Upstream `App.tsx` calls `datadogRum.init()` at module load with `sessionSampleRate: 100` and 20% session replay. This fork gates that behind `isTelemetryEnabled()` from `utils/privacy.ts` (default OFF). Don't add new telemetry without going through the same gate. Build with `VITE_DISABLE_TELEMETRY=true` to lock telemetry off and hide the toggle.
 
 ## Where to test changes
 

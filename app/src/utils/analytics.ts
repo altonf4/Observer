@@ -1,8 +1,12 @@
 import { datadogRum } from '@datadog/browser-rum';
+import { isTelemetryEnabled } from './privacy';
 
 // Thin wrapper so callers never import datadogRum directly.
 // All funnel events go through here — easy to swap or extend later.
+// In this fork, gated by the privacy toggle (Settings → Privacy & Telemetry,
+// default: OFF). When telemetry is off, events become no-ops.
 export function track(action: string, context?: Record<string, unknown>) {
+  if (!isTelemetryEnabled()) return;
   datadogRum.addAction(action, context);
 }
 
