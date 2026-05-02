@@ -79,8 +79,9 @@ $SCREEN
 code: |
 if (response.includes("NOTIFY_USER")) {
   sendTelegram("chat_id", "Your render is complete!", screen);
-  //sleep for 10 minutes to prevent spam
-  sleep(600000);
+  // Debounce so we don't ping repeatedly while the same event is on screen.
+  // 3 min default — drop to 60000 for fast events, raise to 600000+ for slow ones.
+  sleep(180000);
 }
 memory: ""
 $$$
@@ -102,8 +103,9 @@ $CAMERA
 code: |
 if (response.includes("MATCH_FOUND")) {
   sendDiscord("discord_webhook", "Alert: Your dog has been detected!", camera);
-  //sleep for 10 minutes to prevent spam
-  sleep(600000);
+  // Debounce so we don't ping repeatedly while the match persists.
+  // 3 min default — drop to 60000 for fast events, raise to 600000+ for slow ones.
+  sleep(180000);
 }
 memory: ""
 $$$
