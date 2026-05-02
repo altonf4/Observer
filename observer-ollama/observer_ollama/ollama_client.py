@@ -1,5 +1,6 @@
 # ollama_proxy/ollama_client.py
 import os
+import json
 import urllib.request
 import urllib.error
 import socket
@@ -7,6 +8,10 @@ import logging
 import ssl
 
 logger = logging.getLogger('ollama-proxy.client')
+
+# Cache of model_name -> capabilities list (e.g. ['completion', 'vision', 'tools', 'thinking']).
+# Capabilities don't change for a given model digest, so a process-lifetime cache is safe.
+_CAPABILITIES_CACHE = {}
 
 # --- Start of new/modified code ---
 
@@ -87,3 +92,33 @@ def forward_to_ollama(method, path, headers, body):
         logger.error(f"Proxy error when connecting to Ollama: {e}")
         error_body = f"Bad Gateway: The proxy encountered an error. {e}".encode()
         return (502, [('Content-Type', 'text/plain')], (c for c in [error_body]))
+
+
+def get_capabilities(model_name):
+    """
+    Query Ollama's /api/show for a model and return its `capabilities` list
+    (e.g. ['completion', 'vision', 'tools', 'thinking']). Cached per model.
+    Returns [] on any failure so callers can degrade gracefully.
+    """
+    if model_name in _CAPABILITIES_CACHE:
+        return _CAPABILITIES_CACHE[model_name]
+
+    target_url = f"{OLLAMA_BASE_URL}/api/show"
+    payload = json.dumps({"model": model_name}).encode()
+    req = urllib.request.Request(
+        target_url, data=payload, method='POST',
+        headers={'Content-Type': 'application/json'},
+    )
+    ssl_context = ssl._create_unverified_context() if target_url.startswith("https://") else None
+
+    try:
+        with urllib.request.urlopen(req, timeout=10, context=ssl_context) as resp:
+            data = json.loads(resp.read())
+        caps = data.get('capabilities') or []
+        _CAPABILITIES_CACHE[model_name] = caps
+        return caps
+    except Exception as e:
+        logger.warning(f"get_capabilities({model_name}) failed: {e}")
+        # Cache empty result too so we don't hammer /api/show on every list refresh.
+        _CAPABILITIES_CACHE[model_name] = []
+        return []

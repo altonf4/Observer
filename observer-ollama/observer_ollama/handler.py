@@ -2,10 +2,10 @@
 import http.server
 import json
 import logging
-from urllib.parse import urlparse, parse_qs 
+from urllib.parse import urlparse, parse_qs
 from .cors import CorsMixin
 from . import translator
-from . import ollama_client
+from . import ollama_client  # noqa: F401  (used directly in methods)
 
 logger = logging.getLogger('ollama-proxy.handler')
 
@@ -35,6 +35,10 @@ class OllamaProxyHandler(CorsMixin, http.server.BaseHTTPRequestHandler):
             self._handle_favicon_request()
         elif self.path == '/commands-stream':
             self._handle_commands_stream_stub()
+        elif self.path == '/v1/models':
+            # Augment Ollama's OpenAI-compat list with capability flags
+            # (multimodal/thinking/tools) so Observer can render correct UI.
+            self._handle_models_with_capabilities()
         else:
             # All other GETs use the simple, modern proxy
             self._handle_modern_proxy('GET')
@@ -132,6 +136,55 @@ class OllamaProxyHandler(CorsMixin, http.server.BaseHTTPRequestHandler):
         self.send_cors_headers()
         self.end_headers()
         logger.debug("Responded 204 No Content for /favicon.ico")
+
+    def _handle_models_with_capabilities(self):
+        """
+        GET /v1/models — fetch upstream list, then for each model query /api/show
+        and inject `multimodal` (vision), `thinking`, and `tools` flags into the
+        response. Falls back to passthrough on any error.
+        """
+        logger.debug("Augmenting /v1/models with capability flags")
+        status, headers, response_iterator = ollama_client.forward_to_ollama(
+            'GET', '/v1/models', self.headers, None
+        )
+
+        if status != 200:
+            # Pass error through unchanged
+            self.send_response(status)
+            for key, val in headers:
+                if key.lower() not in ['transfer-encoding', 'connection', 'content-length']:
+                    self.send_header(key, val)
+            self.send_cors_headers()
+            self.end_headers()
+            for chunk in response_iterator:
+                self.wfile.write(chunk)
+            return
+
+        try:
+            raw = b''.join(response_iterator)
+            data = json.loads(raw)
+            for model in data.get('data', []):
+                model_id = model.get('id')
+                if not model_id:
+                    continue
+                caps = ollama_client.get_capabilities(model_id)
+                model['multimodal'] = 'vision' in caps
+                model['thinking'] = 'thinking' in caps
+                model['tools'] = 'tools' in caps
+            final_body = json.dumps(data).encode()
+        except (json.JSONDecodeError, AttributeError) as e:
+            logger.warning(f"Failed to augment /v1/models: {e} — falling back to raw response")
+            final_body = raw
+
+        self.send_response(200)
+        for key, val in headers:
+            k = key.lower()
+            if k not in ['transfer-encoding', 'connection', 'content-length']:
+                self.send_header(key, val)
+        self.send_header('Content-Length', str(len(final_body)))
+        self.send_cors_headers()
+        self.end_headers()
+        self.wfile.write(final_body)
 
     def _handle_commands_stream_stub(self):
         """Stub handler for /commands-stream SSE endpoint (not needed in headless mode)."""
