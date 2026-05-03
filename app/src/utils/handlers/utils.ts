@@ -562,14 +562,32 @@ export async function sendDiscord(message: string, webhookUrl: string, images?: 
 }
 
 /**
- * Sends a Telegram message by calling the backend API.
+ * Sends a Telegram message.
+ *
+ * Routing:
+ *   1. If the user has configured their own bot token in Settings →
+ *      Telegram Bot, send directly to api.telegram.org. No screenshot,
+ *      message text, or chat metadata ever touches Observer's servers.
+ *   2. Otherwise, fall back to the Observer-hosted proxy at
+ *      api.observer-ai.com/tools/send-telegram (which forwards through
+ *      @observer_notification_bot). This preserves backward compat for
+ *      any agents that were set up before the user added their bot.
+ *
  * @param message The message content to send.
  * @param chatId The Telegram chat ID to send the message to.
- * @param authToken The authentication token for the Observer AI API.
+ * @param authToken The authentication token for the Observer AI API. Unused on the direct path.
  * @param images Optional array of base64-encoded images (without data:image prefix).
  * @param videos Optional array of base64-encoded videos (without data:video prefix).
  */
 export async function sendTelegram(message: string, chatId: string, authToken: string, images?: string[], videos?: string[]): Promise<void> {
+  // Direct-via-user-bot path (privacy-preserving) — preferred when configured.
+  const { getUserBotToken, sendTelegramDirect } = await import('../telegramBot');
+  if (getUserBotToken()) {
+    await sendTelegramDirect(message, chatId, images, videos);
+    return;
+  }
+
+  // Fallback: Observer-hosted proxy. Requires sign-in.
   const API_HOST = "https://api.observer-ai.com";
 
   if (!authToken) {

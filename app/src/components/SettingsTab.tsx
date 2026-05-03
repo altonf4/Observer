@@ -4,6 +4,7 @@ import { SensorSettings } from '../utils/settings';
 import { StreamManager } from '../utils/streamManager';
 import { isDesktop } from '../utils/platform';
 import { isTelemetryEnabled, setTelemetryEnabled, isTelemetryLockedOff } from '../utils/privacy';
+import { getUserBotToken, setUserBotToken, isPlausibleBotToken } from '../utils/telegramBot';
 
 // Whisper imports
 import { WhisperModelManager } from '../utils/whisper/WhisperModelManager';
@@ -38,6 +39,120 @@ const SettingsCard: React.FC<{ title: string; children: React.ReactNode }> = ({ 
     <div className="p-6">{children}</div>
   </div>
 );
+
+// Bring-Your-Own Telegram Bot — pastes a bot token from @BotFather and
+// flips sendTelegram to call api.telegram.org directly, bypassing
+// Observer's proxy so screen captures never leave for a third-party
+// server. Empty token → fallback to Observer's hosted bot.
+const TelegramBotSettings: React.FC = () => {
+  const [token, setToken] = useState<string>(() => getUserBotToken() ?? '');
+  const [reveal, setReveal] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const trimmed = token.trim();
+  const usingDirect = trimmed.length > 0;
+  const looksValid = usingDirect ? isPlausibleBotToken(trimmed) : true;
+
+  const handleSave = () => {
+    setUserBotToken(trimmed.length > 0 ? trimmed : null);
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 1500);
+  };
+
+  const handleClear = () => {
+    setToken('');
+    setUserBotToken(null);
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 1500);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-3">
+        <Cloud className="h-5 w-5 text-gray-500 mt-0.5 flex-shrink-0" />
+        <div className="flex-1">
+          <p className="text-sm text-gray-700">
+            Send Telegram notifications via your own bot, not the shared
+            <code className="mx-1 px-1 py-0.5 bg-gray-100 rounded text-xs">@observer_notification_bot</code>
+            account. When set, agent code calling <code className="px-1 py-0.5 bg-gray-100 rounded text-xs">sendTelegram</code>
+            posts straight to <code className="px-1 py-0.5 bg-gray-100 rounded text-xs">api.telegram.org</code> —
+            screenshots, videos, and message bodies never touch Observer's servers.
+          </p>
+          <p className="text-xs text-gray-500 mt-2">
+            Setup: chat with <code>@BotFather</code> on Telegram → <code>/newbot</code> → copy the token. Then send your
+            bot a "/start" message and grab your chat ID via
+            <a href="https://api.telegram.org/bot__YOUR_TOKEN__/getUpdates" target="_blank" rel="noopener noreferrer"
+               className="ml-1 text-blue-600 hover:underline">
+              <code>getUpdates</code>
+            </a>.
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <label htmlFor="tg-token" className="block text-sm font-medium text-gray-700 mb-1">
+          Bot token
+        </label>
+        <div className="flex gap-2">
+          <input
+            id="tg-token"
+            type={reveal ? 'text' : 'password'}
+            placeholder="123456789:AAH..."
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            className="flex-1 p-2 bg-gray-100 border border-gray-300 rounded-md text-sm font-mono"
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <button
+            type="button"
+            onClick={() => setReveal((v) => !v)}
+            className="px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-100"
+            title={reveal ? 'Hide' : 'Show'}
+          >
+            {reveal ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
+        {trimmed.length > 0 && !looksValid && (
+          <p className="text-xs text-amber-700 mt-1">
+            Doesn't match the usual <code>{'<digits>:<token>'}</code> shape — double-check from @BotFather.
+          </p>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div className="text-xs">
+          {usingDirect && looksValid ? (
+            <span className="text-green-700">
+              ✓ Direct via your bot ({trimmed.split(':')[0]})
+            </span>
+          ) : (
+            <span className="text-gray-500">
+              Using Observer's hosted bot
+            </span>
+          )}
+          {savedFlash && <span className="ml-2 text-blue-600">saved</span>}
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={handleClear}
+            disabled={trimmed.length === 0}
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // Telemetry toggle — gates Datadog RUM session-replay + analytics.
 // Default OFF in this fork; flip on for upstream-equivalent behavior.
@@ -920,6 +1035,11 @@ const SettingsTab = () => {
       {/* --- Privacy & Telemetry Card (fork addition) --- */}
       <SettingsCard title="Privacy & Telemetry">
         <PrivacySettings />
+      </SettingsCard>
+
+      {/* --- Telegram Bot Card (fork addition: BYO bot, bypass Observer proxy) --- */}
+      <SettingsCard title="Telegram Bot">
+        <TelegramBotSettings />
       </SettingsCard>
 
       {/* --- Change Detection Settings Card --- */}
