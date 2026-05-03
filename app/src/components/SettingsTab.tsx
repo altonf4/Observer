@@ -5,6 +5,13 @@ import { StreamManager } from '../utils/streamManager';
 import { isDesktop } from '../utils/platform';
 import { isTelemetryEnabled, setTelemetryEnabled, isTelemetryLockedOff } from '../utils/privacy';
 import { getUserBotToken, setUserBotToken, isPlausibleBotToken } from '../utils/telegramBot';
+import {
+  isClaudeCodeEnabled,
+  setClaudeCodeEnabled,
+  isClaudeCodeSupported,
+  checkClaudeAvailable,
+  claudeVersion,
+} from '../utils/claudeCli';
 
 // Whisper imports
 import { WhisperModelManager } from '../utils/whisper/WhisperModelManager';
@@ -39,6 +46,101 @@ const SettingsCard: React.FC<{ title: string; children: React.ReactNode }> = ({ 
     <div className="p-6">{children}</div>
   </div>
 );
+
+// AI Edit via Claude Code — when on, routes the conversational
+// agent-builder through the user's local `claude` CLI instead of the
+// hosted Gemini proxy. Pairs with the observer-agent-builder skill
+// (~/.claude/skills/observer-agent-builder/) which auto-loads from
+// description match.
+const ClaudeCodeSettings: React.FC = () => {
+  const supported = isClaudeCodeSupported();
+  const [enabled, setEnabled] = useState<boolean>(() => isClaudeCodeEnabled());
+  const [available, setAvailable] = useState<boolean | null>(null);
+  const [version, setVersion] = useState<string | null>(null);
+  const [savedFlash, setSavedFlash] = useState(false);
+
+  useEffect(() => {
+    if (!supported) return;
+    let cancelled = false;
+    checkClaudeAvailable().then((ok) => {
+      if (cancelled) return;
+      setAvailable(ok);
+      if (ok) claudeVersion().then((v) => !cancelled && setVersion(v));
+    });
+    return () => { cancelled = true; };
+  }, [supported]);
+
+  const handleToggle = () => {
+    const next = !enabled;
+    setClaudeCodeEnabled(next);
+    setEnabled(next);
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 1500);
+  };
+
+  if (!supported) {
+    return (
+      <div className="text-sm text-gray-600">
+        Available only in the desktop build (Tauri). The web build can't shell out to <code>claude</code>.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-3">
+        <Cpu className="h-5 w-5 text-gray-500 mt-0.5 flex-shrink-0" />
+        <div className="flex-1">
+          <p className="text-sm text-gray-700">
+            Route the AI Edit / Generate Agent flows through your local
+            <code className="mx-1 px-1 py-0.5 bg-gray-100 rounded text-xs">claude</code>
+            CLI instead of Observer's hosted Gemini proxy. Uses the
+            <code className="mx-1 px-1 py-0.5 bg-gray-100 rounded text-xs">observer-agent-builder</code>
+            skill at <code>~/.claude/skills/</code> for Observer-tuned agent generation.
+          </p>
+          <p className="text-xs text-gray-500 mt-2">
+            Setup: install Claude Code (<a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">claude.com/claude-code</a>),
+            ensure <code>claude --version</code> works in a terminal, and confirm the
+            <code className="mx-1">observer-agent-builder</code>
+            skill is present at <code>~/.claude/skills/observer-agent-builder/</code>.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between bg-gray-50 p-3 rounded-md">
+        <div className="text-sm">
+          {available === null ? (
+            <span className="text-gray-500">checking…</span>
+          ) : available ? (
+            <span className="text-green-700">
+              ✓ <code>claude</code> CLI detected{version ? ` — ${version}` : ''}
+            </span>
+          ) : (
+            <span className="text-amber-700">
+              <code>claude</code> CLI not found. Install it to enable this option.
+            </span>
+          )}
+          {savedFlash && <span className="ml-2 text-blue-600">saved</span>}
+        </div>
+        <button
+          type="button"
+          onClick={handleToggle}
+          disabled={!available}
+          aria-pressed={enabled}
+          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+            enabled ? 'bg-blue-600' : 'bg-gray-300'
+          }`}
+        >
+          <span
+            className={`inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${
+              enabled ? 'translate-x-5' : 'translate-x-0'
+            }`}
+          />
+        </button>
+      </div>
+    </div>
+  );
+};
 
 // Bring-Your-Own Telegram Bot — pastes a bot token from @BotFather and
 // flips sendTelegram to call api.telegram.org directly, bypassing
@@ -1040,6 +1142,11 @@ const SettingsTab = () => {
       {/* --- Telegram Bot Card (fork addition: BYO bot, bypass Observer proxy) --- */}
       <SettingsCard title="Telegram Bot">
         <TelegramBotSettings />
+      </SettingsCard>
+
+      {/* --- Claude Code Card (fork addition: route AI Edit via local claude CLI) --- */}
+      <SettingsCard title="AI Edit via Claude Code">
+        <ClaudeCodeSettings />
       </SettingsCard>
 
       {/* --- Change Detection Settings Card --- */}

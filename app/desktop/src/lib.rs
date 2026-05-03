@@ -2,6 +2,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod claude_cli;
 mod commands;
 mod controls;
 mod install_cli;
@@ -1362,6 +1363,11 @@ pub fn run() {
             llm_get_context_params,
             llm_set_context_params,
             get_memory_info,
+            // Claude Code bridge — routes AI Edit / Generate Agent through
+            // the user's local `claude` CLI instead of the hosted proxy.
+            claude_cli::claude_check_available,
+            claude_cli::claude_version,
+            claude_cli::claude_generate_agent,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

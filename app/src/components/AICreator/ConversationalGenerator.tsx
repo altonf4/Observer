@@ -9,6 +9,7 @@ import { extractAgentConfig, parseAgentResponse, extractImageRequest } from '@ut
 import MediaUploadMessage from '../MediaUploadMessage';
 import getConversationalSystemPrompt from '@utils/conversational_system_prompt';
 import type { TokenProvider } from '@utils/main_loop';
+import { isClaudeCodeEnabled, claudeGenerateAgent } from '@utils/claudeCli';
 // Removed getOllamaServerAddress import - no longer needed
 import { AgentAutocompleteInput } from './AgentAutocompleteInput';
 import LocalWarning from './LocalWarning';
@@ -128,7 +129,25 @@ What would you like to create today?`
 
     try {
       let responseText: string;
-      if (isUsingObServer) {
+      if (isClaudeCodeEnabled()) {
+        // --- CLAUDE CODE PATH ---
+        // Routes through the local `claude` CLI; observer-agent-builder
+        // skill auto-loads from description match. Non-streaming for now —
+        // we surface a "Thinking..." placeholder via the streaming UI then
+        // swap in the full response in one go.
+        setMessages(prev => prev.map(msg =>
+          msg.id === streamingMessageId
+            ? { ...msg, text: 'Thinking via Claude Code…' }
+            : msg
+        ));
+        responseText = await claudeGenerateAgent(openaiMessages);
+        accumulatedResponse = responseText;
+        setMessages(prev => prev.map(msg =>
+          msg.id === streamingMessageId
+            ? { ...msg, text: accumulatedResponse }
+            : msg
+        ));
+      } else if (isUsingObServer) {
         // --- CLOUD PATH ---
         const token = await getToken();
         if (!token) throw new Error("Authentication failed.");
